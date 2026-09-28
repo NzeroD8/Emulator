@@ -1,0 +1,20 @@
+{
+  "name": "multi_file_vfs",
+  "children": [
+    {
+      "name": "readme.txt",
+      "type": "file",
+      "content_base64": "0K3RgtC+INGC0LXRgdGC0L7QstGL0LkgVkZTINGBINC90LXRgdC60L7Qu9GM0LrQuNC80Lgg0YTQsNC50LvQsNC80Lgu"
+    },
+    {
+      "name": "notes.txt",
+      "type": "file",
+      "content_base64": "0JfQsNC80LXRgtC60Lgg0LHQtdC3INCy0LvQvtC20LXQvdC90YvRhSDQv9Cw0L/QvtC6Lg=="
+    },
+    {
+      "name": "data.bin",
+      "type": "file",
+      "content_base64": "AAECA//+/Q=="
+    }
+  ]
+}

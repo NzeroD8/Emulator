@@ -1,0 +1,38 @@
+{
+  "name": "deep_vfs",
+  "children": [
+    {
+      "name": "top_file.txt",
+      "type": "file",
+      "content_base64": "0KTQsNC50Lsg0L3QsCDQstC10YDRhdC90LXQvCDRg9GA0L7QstC90LUu"
+    },
+    {
+      "name": "level1",
+      "type": "dir",
+      "children": [
+        {
+          "name": "sibling.txt",
+          "type": "file",
+          "content_base64": "0KTQsNC50Lsg0L3QsCDRg9GA0L7QstC90LUgMS4="
+        },
+        {
+          "name": "level2",
+          "type": "dir",
+          "children": [
+            {
+              "name": "level3",
+              "type": "dir",
+              "children": [
+                {
+                  "name": "deep_file.txt",
+                  "type": "file",
+                  "content_base64": "0KTQsNC50Lsg0L3QsCDRg9GA0L7QstC90LUgMy4="
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

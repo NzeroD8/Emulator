@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from emulator import (  # noqa: E402
+from emulator import (
     EmulatorApp,
     define_vfs_name,
     parse_em_args,

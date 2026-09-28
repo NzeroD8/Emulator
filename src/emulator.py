@@ -2,11 +2,13 @@ import argparse
 import os
 import tkinter as tk
 from tkinter import scrolledtext
+from vfs import load_vfs
 
 VFS_NAME = "VFS"
 PROMPT = "$ "
 COMMANDS = ("ls", "cd")
 EXIT_COMMAND = "exit"
+VFS_INFO_COMMAND = "vfs-info"
 COMMENT_PREFIX = "#"
 
 
@@ -58,6 +60,7 @@ def read_script_lines(script_path):
         if line.strip() and not line.strip().startswith(COMMENT_PREFIX)
     ]
 
+
 class EmulatorApp:
 
     def __init__(self, root, vfs_name=VFS_NAME, vfs_path=None,
@@ -66,10 +69,14 @@ class EmulatorApp:
         self.vfs_name = vfs_name
         self.vfs_path = vfs_path
         self.script_path = script_path
+        self.vfs_root = None
+        self.vfs_hash = None
         self._configure_window()
         self._build_input_output()
         self._print_welcome()
         self._print_debug_parameters()
+        if self.vfs_path:
+            self._load_vfs()
         if self.script_path:
             self.root.after(0, self.run_starting_script, self.script_path)
 
@@ -105,6 +112,18 @@ class EmulatorApp:
             f"{self.script_path or '(не задан)'}"
         )
 
+    def _load_vfs(self):
+        try:
+            self.vfs_root, loaded_name, self.vfs_hash = load_vfs(
+                self.vfs_path
+            )
+        except (OSError, ValueError) as error:
+            self.write_output(f"Ошибка загрузки VFS: {error}")
+            return
+        self.vfs_name = loaded_name
+        self.root.title(f"Эмулятор - [{self.vfs_name}]")
+        self.write_output(f"VFS '{self.vfs_name}' успешно загружена.")
+
     def write_output(self, text):
         if not text.endswith("\n"):
             text += "\n"
@@ -136,6 +155,9 @@ class EmulatorApp:
         if command == EXIT_COMMAND:
             self.root.quit()
             return
+        if command == VFS_INFO_COMMAND:
+            self.write_output(self._format_vfs_info())
+            return
         if command in COMMANDS:
             self.write_output(self._format_output(command, args))
             return
@@ -145,6 +167,11 @@ class EmulatorApp:
         if args:
             return f"{command}: {' '.join(args)}"
         return f"{command}: (без аргументов)"
+
+    def _format_vfs_info(self):
+        if self.vfs_root is None:
+            return "Ошибка: VFS не загружена"
+        return f"Имя VFS: {self.vfs_name}\nSHA-256: {self.vfs_hash}"
 
 
 def main(argv=None):
