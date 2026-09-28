@@ -17,21 +17,25 @@ from emulator import (  # noqa: E402
 class ParseInputTestCase(unittest.TestCase):
 
     def test_command_with_args(self):
+        """Команда с несколькими аргументами разбирается верно."""
         command, args = parse_input("ls -la /home")
         self.assertEqual(command, "ls")
         self.assertEqual(args, ["-la", "/home"])
 
     def test_command_without_args(self):
+        """Команда без аргументов возвращает пустой список args."""
         command, args = parse_input("cd")
         self.assertEqual(command, "cd")
         self.assertEqual(args, [])
 
     def test_empty_input(self):
+        """Пустая строка даёт пустую команду."""
         command, args = parse_input("   ")
         self.assertEqual(command, "")
         self.assertEqual(args, [])
 
     def test_extra_whitespace_is_ignored(self):
+        """Лишние пробелы не влияют на разбор."""
         command, args = parse_input("  cd    /var/log  ")
         self.assertEqual(command, "cd")
         self.assertEqual(args, ["/var/log"])
@@ -40,19 +44,21 @@ class ParseInputTestCase(unittest.TestCase):
 class FormatOutputTestCase(unittest.TestCase):
 
     def setUp(self):
+        """Создаёт эмулятор без запуска mainloop."""
         self.app = EmulatorApp.__new__(EmulatorApp)
 
     def test_stub_with_args(self):
+        """Заглушка с аргументами выводит их через пробел."""
         result = self.app._format_output("ls", ["-la", "/home"])
         self.assertEqual(result, "ls: -la /home")
 
     def test_stub_without_args(self):
+        """Заглушка без аргументов выводит пометку об их отсутствии."""
         result = self.app._format_output("cd", [])
         self.assertEqual(result, "cd: (без аргументов)")
 
 
 class ParseCliArgsTestCase(unittest.TestCase):
-    """Тесты для разбора параметров командной строки."""
 
     def test_both_params_provided(self):
         """Оба параметра распознаются корректно."""
@@ -78,18 +84,22 @@ class ParseCliArgsTestCase(unittest.TestCase):
 class DefineVfsNameTestCase(unittest.TestCase):
 
     def test_name_from_path(self):
+        """Имя VFS берётся из имени файла без расширения."""
         self.assertEqual(define_vfs_name("/home/user/my_vfs.json"), "my_vfs")
 
     def test_default_name_when_path_missing(self):
+        """При отсутствии пути возвращается имя по умолчанию."""
         self.assertEqual(define_vfs_name(None), "VFS")
 
     def test_name_without_extension(self):
+        """Путь без расширения тоже даёт корректное имя."""
         self.assertEqual(define_vfs_name("noext"), "noext")
 
 
 class ReadScriptLinesTestCase(unittest.TestCase):
 
     def test_comments_and_blank_lines_are_skipped(self):
+        """Комментарии и пустые строки исключаются из результата."""
         script_text = (
             "# комментарий\n"
             "ls -la /home\n"
@@ -110,6 +120,7 @@ class ReadScriptLinesTestCase(unittest.TestCase):
         self.assertEqual(lines, ["ls -la /home", "cd /var/log", "exit"])
 
     def test_missing_file_raises_oserror(self):
+        """Отсутствующий файл скрипта вызывает OSError."""
         with self.assertRaises(OSError):
             read_script_lines("/path/does/not/exist.txt")
 
