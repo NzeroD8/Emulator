@@ -14,6 +14,8 @@ PWD_COMMAND = "pwd"
 TREE_COMMAND = "tree"
 UPTIME_COMMAND = "uptime"
 VFS_INFO_COMMAND = "vfs-info"
+CHOWN_COMMAND = "chown"
+RM_COMMAND = "rm"
 COMMENT_PREFIX = "#"
 TREE_INDENT = "  "
 
@@ -200,6 +202,12 @@ class EmulatorApp:
         if command == UPTIME_COMMAND:
             self._cmd_uptime()
             return
+        if command == CHOWN_COMMAND:
+            self._cmd_chown(args)
+            return
+        if command == RM_COMMAND:
+            self._cmd_rm(args)
+            return
         self.write_output(f"Ошибка: неизвестная команда '{command}'")
 
     def _format_vfs_info(self):
@@ -227,6 +235,31 @@ class EmulatorApp:
             if child.is_dir():
                 stack.append(child)
         return node, stack
+
+    def _resolve_parent_and_child(self, path_str):
+        segments = split_path_segments(path_str)
+        if not segments:
+            raise ValueError("нужно указать имя файла или директории")
+        if segments[-1] == "..":
+            raise ValueError("нельзя применить команду к '..'")
+        stack = [self.vfs_root] if path_str.startswith("/") else list(self.dir_stack)
+        node = stack[-1]
+        for segment in segments[:-1]:
+            if segment == "..":
+                if len(stack) > 1:
+                    stack.pop()
+                node = stack[-1]
+                continue
+            child = node.find_child(segment)
+            if child is None or not child.is_dir():
+                raise ValueError(f"нет такой директории: {segment}")
+            node = child
+            stack.append(child)
+        target_name = segments[-1]
+        target = node.find_child(target_name)
+        if target is None:
+            raise ValueError(f"нет такого файла или директории: {target_name}")
+        return node, target
 
     def _cmd_ls(self, args):
         if not self.dir_stack:
@@ -296,6 +329,38 @@ class EmulatorApp:
     def _cmd_uptime(self):
         elapsed_seconds = time.monotonic() - self.start_time
         self.write_output(f"uptime: {elapsed_seconds:.1f} сек")
+
+    def _cmd_chown(self, args):
+        if not self.dir_stack:
+            self.write_output("Ошибка: VFS не загружена")
+            return
+        if len(args) != 2:
+            self.write_output("chown: использование: chown <путь> <владелец>")
+            return
+        path_str, new_owner = args
+        try:
+            _, target = self._resolve_parent_and_child(path_str)
+        except ValueError as error:
+            self.write_output(f"chown: {error}")
+            return
+        target.owner = new_owner
+        self.write_output(f"chown: {path_str} -> {new_owner}")
+
+    def _cmd_rm(self, args):
+        if not self.dir_stack:
+            self.write_output("Ошибка: VFS не загружена")
+            return
+        if not args:
+            self.write_output("rm: укажите путь к файлу или директории")
+            return
+        path_str = args[0]
+        try:
+            parent, target = self._resolve_parent_and_child(path_str)
+        except ValueError as error:
+            self.write_output(f"rm: {error}")
+            return
+        parent.children.remove(target)
+        self.write_output(f"rm: удалён {path_str}")
 
 
 def main(argv=None):

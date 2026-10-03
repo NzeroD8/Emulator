@@ -176,6 +176,8 @@ class CommandsTestCase(unittest.TestCase):
             "pwd": lambda: self.app._cmd_pwd(),
             "tree": lambda: self.app._cmd_tree(),
             "uptime": lambda: self.app._cmd_uptime(),
+            "chown": lambda: self.app._cmd_chown(args),
+            "rm": lambda: self.app._cmd_rm(args),
         }[command]()
         return self.app.logs
 
@@ -254,6 +256,66 @@ class CommandsTestCase(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertTrue(result[0].startswith("uptime: "))
 
+    def test_chown_on_file_changes_owner(self):
+        """chown меняет владельца файла в памяти."""
+        result = self.run_command("chown top_file.txt alice")
+        self.assertEqual(result, ["chown: top_file.txt -> alice"])
+        target = self.app.vfs_root.find_child("top_file.txt")
+        self.assertEqual(target.owner, "alice")
+
+    def test_chown_on_directory_changes_owner(self):
+        """chown меняет владельца директории в памяти."""
+        result = self.run_command("chown level1 carol")
+        self.assertEqual(result, ["chown: level1 -> carol"])
+        target = self.app.vfs_root.find_child("level1")
+        self.assertEqual(target.owner, "carol")
+
+    def test_chown_missing_path_reports_error(self):
+        """chown с несуществующим путём выводит ошибку."""
+        result = self.run_command("chown no_such.txt alice")
+        self.assertEqual(
+            result, ["chown: нет такого файла или директории: no_such.txt"]
+        )
+
+    def test_chown_wrong_number_of_args_reports_usage(self):
+        """chown без владельца выводит подсказку по использованию."""
+        result = self.run_command("chown top_file.txt")
+        self.assertEqual(
+            result, ["chown: использование: chown <путь> <владелец>"]
+        )
+
+    def test_rm_removes_file(self):
+        """rm удаляет файл из родительской директории."""
+        result = self.run_command("rm top_file.txt")
+        self.assertEqual(result, ["rm: удалён top_file.txt"])
+        self.assertIsNone(self.app.vfs_root.find_child("top_file.txt"))
+
+    def test_rm_removes_subdirectory_with_contents(self):
+        """rm удаляет директорию вместе со всем её содержимым."""
+        result = self.run_command("rm level1/level2")
+        self.assertEqual(result, ["rm: удалён level1/level2"])
+        level1 = self.app.vfs_root.find_child("level1")
+        self.assertIsNone(level1.find_child("level2"))
+
+    def test_rm_missing_path_reports_error(self):
+        """rm с несуществующим путём выводит ошибку."""
+        result = self.run_command("rm no_such.txt")
+        self.assertEqual(
+            result, ["rm: нет такого файла или директории: no_such.txt"]
+        )
+
+    def test_rm_without_args_reports_usage(self):
+        """rm без аргумента выводит подсказку."""
+        result = self.run_command("rm")
+        self.assertEqual(
+            result, ["rm: укажите путь к файлу или директории"]
+        )
+
+    def test_rm_parent_directory_reference_reports_error(self):
+        """rm '..' отклоняется как недопустимая цель."""
+        result = self.run_command("rm ..")
+        self.assertEqual(result, ["rm: нельзя применить команду к '..'"])
+
 
 class CommandsWithoutVfsTestCase(unittest.TestCase):
 
@@ -276,6 +338,8 @@ class CommandsWithoutVfsTestCase(unittest.TestCase):
             "pwd": lambda: self.app._cmd_pwd(),
             "tree": lambda: self.app._cmd_tree(),
             "uptime": lambda: self.app._cmd_uptime(),
+            "chown": lambda: self.app._cmd_chown(args),
+            "rm": lambda: self.app._cmd_rm(args),
         }[command]()
         return self.app.logs
 
@@ -304,6 +368,18 @@ class CommandsWithoutVfsTestCase(unittest.TestCase):
         result = self.run_command("uptime")
         self.assertEqual(len(result), 1)
         self.assertTrue(result[0].startswith("uptime: "))
+
+    def test_chown_without_vfs_reports_error(self):
+        """chown без загруженной VFS сообщает об ошибке."""
+        self.assertEqual(
+            self.run_command("chown foo alice"), ["Ошибка: VFS не загружена"]
+        )
+
+    def test_rm_without_vfs_reports_error(self):
+        """rm без загруженной VFS сообщает об ошибке."""
+        self.assertEqual(
+            self.run_command("rm foo"), ["Ошибка: VFS не загружена"]
+        )
 
 
 if __name__ == "__main__":

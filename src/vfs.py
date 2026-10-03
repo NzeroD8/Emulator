@@ -5,15 +5,18 @@ import json
 NODE_TYPE_DIR = "dir"
 NODE_TYPE_FILE = "file"
 DEFAULT_VFS_DISPLAY_NAME = "Vfs"
+DEFAULT_OWNER = "root"
 
 
 class VfsNode:
 
-    def __init__(self, name, node_type, content=None, children=None):
+    def __init__(self, name, node_type, content=None, children=None,
+                 owner=DEFAULT_OWNER):
         self.name = name
         self.node_type = node_type
         self.content = content
         self.children = children if children is not None else []
+        self.owner = owner
 
     def is_dir(self):
         return self.node_type == NODE_TYPE_DIR

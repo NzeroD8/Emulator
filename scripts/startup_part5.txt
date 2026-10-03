@@ -1,0 +1,24 @@
+# Тестирование chown и rm (Этап 5).
+# Рассчитан на запуск с --vfs-path Vfs/deep_vfs.json
+
+ls
+tree
+
+chown top_file.txt sv
+chown level1 yt
+
+chown no_such.txt yt
+chown top_file.txt
+
+rm top_file.txt
+ls
+
+rm level1/level2
+tree
+
+rm no_such.txt
+rm ..
+rm
+
+vfs-info
+
