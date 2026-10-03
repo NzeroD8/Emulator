@@ -1,0 +1,29 @@
+# Тестирование pwd, ls, cd, tree, uptime (Этап 4).
+# Рассчитан на запуск с --vfs-path Vfs/deep_vfs.json
+
+pwd
+ls
+tree
+
+cd level1
+pwd
+ls
+
+cd level2
+cd level3
+pwd
+ls
+
+cd ..
+cd ..
+cd ..
+pwd
+
+# Проверка обработки ошибок
+cd no_such_dir
+cd top_file.txt
+ls no_such_path
+
+uptime
+vfs-info
+

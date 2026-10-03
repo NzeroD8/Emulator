@@ -1,6 +1,9 @@
+import base64
+import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -12,6 +15,7 @@ from emulator import (
     parse_input,
     read_script_lines,
 )
+from vfs import load_vfs
 
 
 class ParseInputTestCase(unittest.TestCase):
@@ -39,23 +43,6 @@ class ParseInputTestCase(unittest.TestCase):
         command, args = parse_input("  cd    /var/log  ")
         self.assertEqual(command, "cd")
         self.assertEqual(args, ["/var/log"])
-
-
-class FormatOutputTestCase(unittest.TestCase):
-
-    def setUp(self):
-        """Создаёт эмулятор без запуска mainloop."""
-        self.app = EmulatorApp.__new__(EmulatorApp)
-
-    def test_stub_with_args(self):
-        """Заглушка с аргументами выводит их через пробел."""
-        result = self.app._format_output("ls", ["-la", "/home"])
-        self.assertEqual(result, "ls: -la /home")
-
-    def test_stub_without_args(self):
-        """Заглушка без аргументов выводит пометку об их отсутствии."""
-        result = self.app._format_output("cd", [])
-        self.assertEqual(result, "cd: (без аргументов)")
 
 
 class ParseCliArgsTestCase(unittest.TestCase):
@@ -123,6 +110,200 @@ class ReadScriptLinesTestCase(unittest.TestCase):
         """Отсутствующий файл скрипта вызывает OSError."""
         with self.assertRaises(OSError):
             read_script_lines("/path/does/not/exist.txt")
+
+
+def _write_vfs_json(data):
+    """Записывает словарь во временный JSON-файл VFS и возвращает путь."""
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False, encoding="utf-8"
+    ) as tmp_file:
+        json.dump(data, tmp_file)
+        return tmp_file.name
+
+
+def _b64(text):
+    """Кодирует строку в base64 для вставки в JSON-описание VFS."""
+    return base64.b64encode(text.encode("utf-8")).decode("ascii")
+
+
+def _build_deep_vfs_file():
+    """Создаёт временный JSON с VFS вложенностью в 3 уровня и возвращает путь."""
+    data = {
+        "name": "deep_vfs",
+        "children": [
+            {"name": "top_file.txt", "type": "file",
+             "content_base64": _b64("top")},
+            {"name": "level1", "type": "dir", "children": [
+                {"name": "sibling.txt", "type": "file",
+                 "content_base64": _b64("sib")},
+                {"name": "level2", "type": "dir", "children": [
+                    {"name": "level3", "type": "dir", "children": [
+                        {"name": "deep_file.txt", "type": "file",
+                         "content_base64": _b64("deep")}
+                    ]}
+                ]}
+            ]},
+        ],
+    }
+    return _write_vfs_json(data)
+
+
+class CommandsTestCase(unittest.TestCase):
+
+    def setUp(self):
+        """Готовит EmulatorApp с загруженной VFS, но без реального окна."""
+        self.vfs_path = _build_deep_vfs_file()
+        self.app = EmulatorApp.__new__(EmulatorApp)
+        self.app.logs = []
+        self.app.write_output = self.app.logs.append
+        self.app.vfs_root, self.app.vfs_name, self.app.vfs_hash = load_vfs(
+            self.vfs_path
+        )
+        self.app.dir_stack = [self.app.vfs_root]
+        self.app.start_time = time.monotonic()
+
+    def tearDown(self):
+        """Удаляет временный файл VFS после каждого теста."""
+        os.remove(self.vfs_path)
+
+    def run_command(self, raw_line):
+        """Разбирает и выполняет одну команду, возвращая строки лога."""
+        self.app.logs.clear()
+        command, args = parse_input(raw_line)
+        {
+            "ls": lambda: self.app._cmd_ls(args),
+            "cd": lambda: self.app._cmd_cd(args),
+            "pwd": lambda: self.app._cmd_pwd(),
+            "tree": lambda: self.app._cmd_tree(),
+            "uptime": lambda: self.app._cmd_uptime(),
+        }[command]()
+        return self.app.logs
+
+    def test_pwd_at_root(self):
+        """В корне VFS pwd возвращает '/'."""
+        self.assertEqual(self.run_command("pwd"), ["/"])
+
+    def test_ls_at_root_lists_children_sorted(self):
+        """ls в корне перечисляет детей по алфавиту, папки с '/'."""
+        self.assertEqual(
+            self.run_command("ls"), ["level1/  top_file.txt"]
+        )
+
+    def test_cd_into_subdirectory_and_back(self):
+        """cd в поддиректорию и обратно через .. меняет текущий путь."""
+        self.run_command("cd level1")
+        self.assertEqual(self.run_command("pwd"), ["/level1"])
+        self.run_command("cd ..")
+        self.assertEqual(self.run_command("pwd"), ["/"])
+
+    def test_cd_multiple_levels_deep(self):
+        """Последовательные cd позволяют спуститься на 3 уровня вниз."""
+        self.run_command("cd level1")
+        self.run_command("cd level2")
+        self.run_command("cd level3")
+        self.assertEqual(self.run_command("pwd"), ["/level1/level2/level3"])
+        self.assertEqual(self.run_command("ls"), ["deep_file.txt"])
+
+    def test_cd_up_past_root_stays_at_root(self):
+        """cd .. в корне не вызывает ошибку и остаётся в корне."""
+        self.run_command("cd ..")
+        self.assertEqual(self.run_command("pwd"), ["/"])
+
+    def test_cd_missing_directory_reports_error(self):
+        """cd в несуществующую директорию выводит ошибку."""
+        result = self.run_command("cd no_such_dir")
+        self.assertEqual(
+            result, ["cd: нет такого файла или директории: no_such_dir"]
+        )
+
+    def test_cd_into_file_reports_error(self):
+        """cd в путь, указывающий на файл, выводит ошибку."""
+        result = self.run_command("cd top_file.txt")
+        self.assertEqual(
+            result, ["cd: не является директорией: top_file.txt"]
+        )
+
+    def test_ls_missing_path_reports_error(self):
+        """ls с несуществующим путём выводит ошибку."""
+        result = self.run_command("ls no_such_path")
+        self.assertEqual(
+            result, ["ls: нет такого файла или директории: no_such_path"]
+        )
+
+    def test_ls_on_file_prints_file_name(self):
+        """ls, указывающий на файл, печатает только его имя."""
+        self.assertEqual(self.run_command("ls top_file.txt"), ["top_file.txt"])
+
+    def test_tree_shows_full_nested_structure(self):
+        """tree строит вложенную структуру с отступами по уровням."""
+        result = self.run_command("tree")
+        expected = (
+            "deep_vfs/\n"
+            "  level1/\n"
+            "    level2/\n"
+            "      level3/\n"
+            "        deep_file.txt\n"
+            "    sibling.txt\n"
+            "  top_file.txt"
+        )
+        self.assertEqual(result, [expected])
+
+    def test_uptime_is_non_negative_number(self):
+        """uptime возвращает неотрицательное число секунд."""
+        result = self.run_command("uptime")
+        self.assertEqual(len(result), 1)
+        self.assertTrue(result[0].startswith("uptime: "))
+
+
+class CommandsWithoutVfsTestCase(unittest.TestCase):
+
+    def setUp(self):
+        """Готовит EmulatorApp без загруженной VFS."""
+        self.app = EmulatorApp.__new__(EmulatorApp)
+        self.app.logs = []
+        self.app.write_output = self.app.logs.append
+        self.app.vfs_root = None
+        self.app.dir_stack = None
+        self.app.start_time = time.monotonic()
+
+    def run_command(self, raw_line):
+        """Разбирает и выполняет одну команду, возвращая строки лога."""
+        self.app.logs.clear()
+        command, args = parse_input(raw_line)
+        {
+            "ls": lambda: self.app._cmd_ls(args),
+            "cd": lambda: self.app._cmd_cd(args),
+            "pwd": lambda: self.app._cmd_pwd(),
+            "tree": lambda: self.app._cmd_tree(),
+            "uptime": lambda: self.app._cmd_uptime(),
+        }[command]()
+        return self.app.logs
+
+    def test_ls_without_vfs_reports_error(self):
+        """ls без загруженной VFS сообщает об ошибке."""
+        self.assertEqual(self.run_command("ls"), ["Ошибка: VFS не загружена"])
+
+    def test_cd_without_vfs_reports_error(self):
+        """cd без загруженной VFS сообщает об ошибке."""
+        self.assertEqual(
+            self.run_command("cd foo"), ["Ошибка: VFS не загружена"]
+        )
+
+    def test_pwd_without_vfs_reports_error(self):
+        """pwd без загруженной VFS сообщает об ошибке."""
+        self.assertEqual(self.run_command("pwd"), ["Ошибка: VFS не загружена"])
+
+    def test_tree_without_vfs_reports_error(self):
+        """tree без загруженной VFS сообщает об ошибке."""
+        self.assertEqual(
+            self.run_command("tree"), ["Ошибка: VFS не загружена"]
+        )
+
+    def test_uptime_works_without_vfs(self):
+        """uptime не зависит от VFS и работает всегда."""
+        result = self.run_command("uptime")
+        self.assertEqual(len(result), 1)
+        self.assertTrue(result[0].startswith("uptime: "))
 
 
 if __name__ == "__main__":
